@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "FitReal",
+    "slug": "fitreal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "fitreal",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fitreal.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FitReal necesita acceso a tu camara para hacer la foto diaria de tu entrenamiento."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.fitreal.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "FitReal necesita acceso a tu camara para hacer la foto diaria de tu entrenamiento."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FitReal usa tu ubicacion para verificar que estas entrenando."
+        }
+      ]
+    ]
+  }
+}
