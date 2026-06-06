@@ -16,8 +16,26 @@ export type UserProfile = {
   last_entry_date: string | null;
   streak_freezes: number;
   deleted_at: string | null;
+  onboarded_at: string | null;
   created_at: string;
 };
+
+export type WorkoutType =
+  | "weights"
+  | "cardio"
+  | "mobility"
+  | "calisthenics"
+  | "sport"
+  | "rest";
+
+export const WORKOUT_TYPES: { value: WorkoutType; label: string; emoji: string }[] = [
+  { value: "weights", label: "Pesas", emoji: "💪" },
+  { value: "cardio", label: "Cardio", emoji: "🏃" },
+  { value: "calisthenics", label: "Calistenia", emoji: "🤸" },
+  { value: "sport", label: "Deporte", emoji: "🥊" },
+  { value: "mobility", label: "Movilidad", emoji: "🧘" },
+  { value: "rest", label: "Descanso", emoji: "😌" },
+];
 
 export type DailyEntry = {
   id: string;
@@ -27,6 +45,8 @@ export type DailyEntry = {
   date: string;
   gps_lat: number | null;
   gps_lng: number | null;
+  workout_type: WorkoutType | null;
+  caption: string | null;
 };
 
 export type Friendship = {

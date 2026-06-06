@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,13 +7,22 @@ import {
   Alert,
   Image,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 import { decode } from "base64-arraybuffer";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { useProfile } from "../../src/contexts/ProfileContext";
 import { supabase } from "../../src/lib/supabase";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Button, ScreenContainer } from "../../src/components/ui";
+import {
+  WORKOUT_TYPES,
+  WorkoutType,
+} from "../../src/lib/database.types";
+import { colors, radius, spacing, typography } from "../../src/theme";
+import { todayISO } from "../../src/utils/date";
 
 export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -22,42 +31,58 @@ export default function CameraScreen() {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [todayDone, setTodayDone] = useState(false);
+  const [workoutType, setWorkoutType] = useState<WorkoutType>("weights");
+  const [checkingToday, setCheckingToday] = useState(true);
   const cameraRef = useRef<CameraView>(null);
   const { user } = useAuth();
+  const { refresh: refreshProfile } = useProfile();
 
-  if (!permission) {
-    return <View style={styles.container} />;
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("daily_entries")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("date", todayISO())
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setTodayDone(true);
+        setCheckingToday(false);
+      });
+  }, [user]);
+
+  if (!permission || checkingToday) {
+    return <ScreenContainer />;
   }
 
   if (!permission.granted) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenContainer>
         <View style={styles.permissionContainer}>
+          <Text style={styles.permissionEmoji}>📷</Text>
           <Text style={styles.permissionTitle}>Necesitamos tu camara</Text>
           <Text style={styles.permissionText}>
             FitReal usa la camara para hacer la foto diaria de tu entrenamiento.
             Sin galeria, sin filtros, solo tu esfuerzo real.
           </Text>
-          <TouchableOpacity style={styles.button} onPress={requestPermission}>
-            <Text style={styles.buttonText}>Permitir camara</Text>
-          </TouchableOpacity>
+          <Button title="Permitir camara" onPress={requestPermission} />
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   if (todayDone) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenContainer>
         <View style={styles.doneContainer}>
-          <Text style={styles.doneEmoji}>&#x2705;</Text>
+          <Text style={styles.doneEmoji}>✅</Text>
           <Text style={styles.doneTitle}>Hecho por hoy!</Text>
           <Text style={styles.doneText}>
-            Ya has subido tu foto de hoy. Vuelve manana para seguir sumando
-            dias.
+            Ya has subido tu foto de hoy. Vuelve manana para seguir sumando dias
+            a tu racha.
           </Text>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
@@ -92,7 +117,7 @@ export default function CameraScreen() {
         // Location is optional
       }
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayISO();
       const arrayBuffer = decode(photoBase64);
 
       const filePath = `${user.id}/${today}.jpg`;
@@ -113,10 +138,11 @@ export default function CameraScreen() {
         .from("daily_entries")
         .insert({
           user_id: user.id,
-          photo_url: publicUrl,
+          photo_url: `${publicUrl}?v=${Date.now()}`,
           date: today,
           gps_lat: gpsLat,
           gps_lng: gpsLng,
+          workout_type: workoutType,
         });
 
       if (entryError) {
@@ -128,8 +154,8 @@ export default function CameraScreen() {
         throw entryError;
       }
 
+      await refreshProfile();
       setTodayDone(true);
-      Alert.alert("Hecho!", "Tu foto de hoy se ha subido. Sigue asi!");
     } catch (error: any) {
       Alert.alert("Error", error.message ?? "No se pudo subir la foto");
     } finally {
@@ -139,31 +165,53 @@ export default function CameraScreen() {
 
   if (photo) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Image source={{ uri: photo }} style={styles.preview} />
-        <View style={styles.previewButtons}>
-          <TouchableOpacity
-            style={styles.retakeButton}
-            onPress={() => {
-              setPhoto(null);
-              setPhotoBase64(null);
-            }}
-          >
-            <Text style={styles.buttonText}>Repetir</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, uploading && styles.buttonDisabled]}
-            onPress={uploadPhoto}
-            disabled={uploading}
-          >
-            {uploading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Subir foto</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <ScreenContainer>
+        <ScrollView contentContainerStyle={styles.previewWrap}>
+          <Image source={{ uri: photo }} style={styles.preview} />
+          <View style={styles.workoutTypes}>
+            <Text style={styles.workoutTitle}>Tipo de entreno</Text>
+            <View style={styles.workoutGrid}>
+              {WORKOUT_TYPES.map((wt) => (
+                <TouchableOpacity
+                  key={wt.value}
+                  style={[
+                    styles.workoutChip,
+                    workoutType === wt.value && styles.workoutChipActive,
+                  ]}
+                  onPress={() => setWorkoutType(wt.value)}
+                >
+                  <Text style={styles.workoutEmoji}>{wt.emoji}</Text>
+                  <Text
+                    style={[
+                      styles.workoutLabel,
+                      workoutType === wt.value && styles.workoutLabelActive,
+                    ]}
+                  >
+                    {wt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={styles.previewButtons}>
+            <Button
+              title="Repetir"
+              variant="secondary"
+              onPress={() => {
+                setPhoto(null);
+                setPhotoBase64(null);
+              }}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Subir foto"
+              onPress={uploadPhoto}
+              loading={uploading}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </ScrollView>
+      </ScreenContainer>
     );
   }
 
@@ -179,7 +227,7 @@ export default function CameraScreen() {
                 setFacing((f) => (f === "front" ? "back" : "front"))
               }
             >
-              <Text style={styles.flipText}>&#x1F504;</Text>
+              <Text style={styles.flipText}>🔄</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.captureButton} onPress={takePhoto}>
               <View style={styles.captureInner} />
@@ -195,7 +243,7 @@ export default function CameraScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.bg,
   },
   camera: {
     flex: 1,
@@ -203,14 +251,14 @@ const styles = StyleSheet.create({
   cameraOverlay: {
     flex: 1,
     justifyContent: "space-between",
-    padding: 24,
+    padding: spacing.lg,
   },
   cameraTitle: {
-    color: "#fff",
+    color: colors.white,
     fontSize: 20,
     fontWeight: "700",
     textAlign: "center",
-    marginTop: 16,
+    marginTop: spacing.md,
     textShadowColor: "rgba(0,0,0,0.8)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
@@ -219,21 +267,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: spacing.lg,
   },
   captureButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: "rgba(255,255,255,0.3)",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 3,
+    borderColor: colors.accent,
   },
   captureInner: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    backgroundColor: "#fff",
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.white,
   },
   flipButton: {
     width: 50,
@@ -244,74 +294,100 @@ const styles = StyleSheet.create({
   flipText: {
     fontSize: 28,
   },
+  previewWrap: {
+    padding: spacing.md,
+    gap: spacing.md,
+  },
   preview: {
-    flex: 1,
+    width: "100%",
+    aspectRatio: 3 / 4,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  workoutTypes: {
+    gap: spacing.sm,
+  },
+  workoutTitle: {
+    ...typography.h2,
+    color: colors.text,
+  },
+  workoutGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  workoutChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  workoutChipActive: {
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accent,
+  },
+  workoutEmoji: {
+    fontSize: 18,
+  },
+  workoutLabel: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  workoutLabelActive: {
+    color: colors.accent,
+    fontWeight: "700",
   },
   previewButtons: {
     flexDirection: "row",
-    gap: 16,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  retakeButton: {
-    flex: 1,
-    backgroundColor: "#333",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-  },
-  button: {
-    flex: 1,
-    backgroundColor: "#FF6B35",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
   permissionContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  permissionEmoji: {
+    fontSize: 64,
+    marginBottom: spacing.sm,
   },
   permissionTitle: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 16,
+    color: colors.text,
+    ...typography.title,
+    textAlign: "center",
   },
   permissionText: {
-    color: "#999",
+    color: colors.textMuted,
     fontSize: 16,
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: spacing.md,
     lineHeight: 24,
   },
   doneContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
+    padding: spacing.xl,
   },
   doneEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: 80,
+    marginBottom: spacing.md,
   },
   doneTitle: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 12,
+    color: colors.text,
+    ...typography.title,
+    marginBottom: spacing.sm,
   },
   doneText: {
-    color: "#999",
+    color: colors.textMuted,
     fontSize: 16,
     textAlign: "center",
     lineHeight: 24,

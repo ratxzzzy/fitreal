@@ -13,6 +13,10 @@ import { useProfile } from "../src/contexts/ProfileContext";
 import { Button, Input, ScreenContainer } from "../src/components/ui";
 import { colors, radius, spacing } from "../src/theme";
 import { NotificationWindow } from "../src/lib/database.types";
+import {
+  cancelAllReminders,
+  scheduleDailyReminder,
+} from "../src/lib/notifications";
 
 const WINDOWS: { value: NotificationWindow; label: string; emoji: string }[] = [
   { value: "morning", label: "Manana (7-11h)", emoji: "🌅" },
@@ -40,6 +44,9 @@ export default function SettingsScreen() {
         bio: bio.trim() || null,
         notification_window: window,
       });
+      if (profile && window !== profile.notification_window) {
+        await scheduleDailyReminder(window);
+      }
       Alert.alert("Guardado", "Tus cambios se han guardado");
     } catch (e: any) {
       Alert.alert("Error", e.message ?? "No se pudo guardar");
@@ -51,7 +58,14 @@ export default function SettingsScreen() {
   const confirmLogout = () =>
     Alert.alert("Cerrar sesion", "Seguro que quieres salir?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Salir", style: "destructive", onPress: signOut },
+      {
+        text: "Salir",
+        style: "destructive",
+        onPress: async () => {
+          await cancelAllReminders();
+          await signOut();
+        },
+      },
     ]);
 
   const confirmDelete = () =>

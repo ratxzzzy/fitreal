@@ -4,27 +4,39 @@ import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
-import { ProfileProvider } from "../src/contexts/ProfileContext";
+import { ProfileProvider, useProfile } from "../src/contexts/ProfileContext";
 import { colors } from "../src/theme";
 
 function RootLayoutNav() {
-  const { session, loading } = useAuth();
+  const { session, loading: authLoading } = useAuth();
+  const { profile, loading: profileLoading } = useProfile();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
+    if (authLoading) return;
 
-    const inAuthGroup = segments[0] === "(auth)";
+    const inAuth = segments[0] === "(auth)";
+    const inOnboarding = segments[0] === "(onboarding)";
 
-    if (!session && !inAuthGroup) {
-      router.replace("/(auth)/login");
-    } else if (session && inAuthGroup) {
+    if (!session) {
+      if (!inAuth) router.replace("/(auth)/login");
+      return;
+    }
+
+    if (profileLoading) return;
+
+    if (profile && !profile.onboarded_at) {
+      if (!inOnboarding) router.replace("/(onboarding)/welcome");
+      return;
+    }
+
+    if (inAuth || inOnboarding) {
       router.replace("/(tabs)/feed");
     }
-  }, [session, loading, segments]);
+  }, [session, profile, authLoading, profileLoading, segments]);
 
-  if (loading) {
+  if (authLoading || (session && profileLoading)) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.accent} />

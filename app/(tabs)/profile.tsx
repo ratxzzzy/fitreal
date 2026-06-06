@@ -20,6 +20,7 @@ import {
   ScreenContainer,
   StreakBadge,
 } from "../../src/components/ui";
+import { ActivityCalendar } from "../../src/components/profile/ActivityCalendar";
 import { colors, radius, spacing, typography } from "../../src/theme";
 
 type Friend = {
@@ -43,9 +44,19 @@ export default function ProfileScreen() {
   const [friendSearch, setFriendSearch] = useState("");
   const [addingFriend, setAddingFriend] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activityDates, setActivityDates] = useState<{ date: string }[]>([]);
 
   const loadSocial = useCallback(async () => {
     if (!user) return;
+
+    const since = new Date();
+    since.setDate(since.getDate() - 140);
+    const { data: activity } = await supabase
+      .from("daily_entries")
+      .select("date")
+      .eq("user_id", user.id)
+      .gte("date", since.toISOString().split("T")[0]);
+    setActivityDates(activity ?? []);
 
     const { data: friendships } = await supabase
       .from("friendships")
@@ -206,6 +217,13 @@ export default function ProfileScreen() {
               <Text style={styles.statNumber}>{friends.length}</Text>
               <Text style={styles.statLabel}>amigos</Text>
             </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Actividad</Text>
+          <View style={styles.activityCard}>
+            <ActivityCalendar entries={activityDates} weeks={20} />
           </View>
         </View>
 
@@ -423,5 +441,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     padding: spacing.lg,
+  },
+  activityCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
   },
 });
