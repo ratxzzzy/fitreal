@@ -33,14 +33,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, username: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { username } },
     });
     if (error) throw error;
 
+    const userId = data.user?.id;
+    if (!userId) throw new Error("No se pudo crear la cuenta");
+
     const { error: profileError } = await supabase.from("users").insert({
+      id: userId,
       email,
       username,
       notification_window: "random",
