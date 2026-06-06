@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
+import { decode } from "base64-arraybuffer";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { supabase } from "../../src/lib/supabase";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,6 +19,7 @@ export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<"front" | "back">("front");
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [todayDone, setTodayDone] = useState(false);
   const cameraRef = useRef<CameraView>(null);
@@ -67,11 +69,12 @@ export default function CameraScreen() {
     });
     if (result) {
       setPhoto(result.uri);
+      setPhotoBase64(result.base64 ?? null);
     }
   };
 
   const uploadPhoto = async () => {
-    if (!photo || !user) return;
+    if (!photo || !photoBase64 || !user) return;
     setUploading(true);
 
     try {
@@ -90,14 +93,12 @@ export default function CameraScreen() {
       }
 
       const today = new Date().toISOString().split("T")[0];
-
-      const response = await fetch(photo);
-      const blob = await response.blob();
+      const arrayBuffer = decode(photoBase64);
 
       const filePath = `${user.id}/${today}.jpg`;
       const { error: uploadError } = await supabase.storage
         .from("daily-photos")
-        .upload(filePath, blob, {
+        .upload(filePath, arrayBuffer, {
           contentType: "image/jpeg",
           upsert: true,
         });
@@ -143,7 +144,10 @@ export default function CameraScreen() {
         <View style={styles.previewButtons}>
           <TouchableOpacity
             style={styles.retakeButton}
-            onPress={() => setPhoto(null)}
+            onPress={() => {
+              setPhoto(null);
+              setPhotoBase64(null);
+            }}
           >
             <Text style={styles.buttonText}>Repetir</Text>
           </TouchableOpacity>
