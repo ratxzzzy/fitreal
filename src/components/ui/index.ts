@@ -4,3 +4,4 @@ export { Avatar } from "./Avatar";
 export { Badge } from "./Badge";
 export { StreakBadge } from "./StreakBadge";
 export { ScreenContainer } from "./ScreenContainer";
+export { SuccessAnimation } from "./SuccessAnimation";

@@ -1,5 +1,18 @@
 import { Tabs } from "expo-router";
-import { Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { colors, spacing } from "../../src/theme";
+
+function TabIcon({ emoji, size = 22 }: { emoji: string; size?: number }) {
+  return <Text style={{ fontSize: size }}>{emoji}</Text>;
+}
+
+function CameraTabIcon({ focused }: { focused: boolean }) {
+  return (
+    <View style={[styles.cameraBtn, focused && styles.cameraBtnActive]}>
+      <Text style={styles.cameraIcon}>📸</Text>
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   return (
@@ -7,8 +20,8 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: "#FF6B35",
-        tabBarInactiveTintColor: "#666",
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textDim,
         tabBarLabelStyle: styles.tabLabel,
       }}
     >
@@ -16,27 +29,21 @@ export default function TabsLayout() {
         name="feed"
         options={{
           title: "Feed",
-          tabBarIcon: ({ color }) => (
-            <Text style={[styles.icon, { color }]}>&#x1F525;</Text>
-          ),
+          tabBarIcon: () => <TabIcon emoji="🏠" />,
         }}
       />
       <Tabs.Screen
         name="camera"
         options={{
-          title: "Foto",
-          tabBarIcon: ({ color }) => (
-            <Text style={[styles.iconBig, { color }]}>&#x1F4F7;</Text>
-          ),
+          title: "",
+          tabBarIcon: ({ focused }) => <CameraTabIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Perfil",
-          tabBarIcon: ({ color }) => (
-            <Text style={[styles.icon, { color }]}>&#x1F464;</Text>
-          ),
+          tabBarIcon: () => <TabIcon emoji="👤" />,
         }}
       />
     </Tabs>
@@ -45,20 +52,38 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: "#111",
-    borderTopColor: "#222",
-    height: 85,
-    paddingBottom: 20,
+    backgroundColor: colors.surface,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    height: 88,
+    paddingBottom: 22,
     paddingTop: 8,
+    elevation: 0,
   },
   tabLabel: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
-  icon: {
-    fontSize: 22,
+  cameraBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.accent,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 18,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  iconBig: {
-    fontSize: 28,
+  cameraBtnActive: {
+    backgroundColor: "#FF8F5E",
+    shadowOpacity: 0.6,
+  },
+  cameraIcon: {
+    fontSize: 26,
   },
 });

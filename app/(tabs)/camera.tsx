@@ -16,7 +16,7 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import { useProfile } from "../../src/contexts/ProfileContext";
 import { supabase } from "../../src/lib/supabase";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Button, ScreenContainer } from "../../src/components/ui";
+import { Button, ScreenContainer, SuccessAnimation } from "../../src/components/ui";
 import {
   WORKOUT_TYPES,
   WorkoutType,
@@ -33,9 +33,10 @@ export default function CameraScreen() {
   const [todayDone, setTodayDone] = useState(false);
   const [workoutType, setWorkoutType] = useState<WorkoutType>("weights");
   const [checkingToday, setCheckingToday] = useState(true);
+  const [showSuccess, setShowSuccess] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const { user } = useAuth();
-  const { refresh: refreshProfile } = useProfile();
+  const { profile, refresh: refreshProfile } = useProfile();
 
   useEffect(() => {
     if (!user) return;
@@ -155,7 +156,7 @@ export default function CameraScreen() {
       }
 
       await refreshProfile();
-      setTodayDone(true);
+      setShowSuccess(true);
     } catch (error: any) {
       Alert.alert("Error", error.message ?? "No se pudo subir la foto");
     } finally {
@@ -166,6 +167,11 @@ export default function CameraScreen() {
   if (photo) {
     return (
       <ScreenContainer>
+        <SuccessAnimation
+          visible={showSuccess}
+          streak={(profile?.current_streak ?? 0) + 1}
+          onFinish={() => setTodayDone(true)}
+        />
         <ScrollView contentContainerStyle={styles.previewWrap}>
           <Image source={{ uri: photo }} style={styles.preview} />
           <View style={styles.workoutTypes}>

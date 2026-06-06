@@ -7,6 +7,7 @@ import {
   Alert,
   ScrollView,
   RefreshControl,
+  Share,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -154,6 +155,12 @@ export default function ProfileScreen() {
     setAddingFriend(false);
   };
 
+  const shareFitReal = async () => {
+    await Share.share({
+      message: `Unete a FitReal y entrena conmigo! Mi usuario es @${profile?.username}. Descarga la app y anademe como amigo 💪🔥`,
+    });
+  };
+
   const acceptFriend = async (friendUserId: string) => {
     if (!user) return;
     await supabase
@@ -266,6 +273,10 @@ export default function ProfileScreen() {
               <Text style={styles.addButtonText}>+</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity style={styles.inviteButton} onPress={shareFitReal}>
+            <Text style={styles.inviteEmoji}>📲</Text>
+            <Text style={styles.inviteText}>Invitar amigos</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -296,11 +307,6 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        <Button
-          title="Ajustes"
-          variant="secondary"
-          onPress={() => router.push("/settings")}
-        />
       </ScrollView>
     </ScreenContainer>
   );
@@ -435,6 +441,26 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: "700",
     fontSize: 14,
+  },
+  inviteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: "dashed",
+  },
+  inviteEmoji: {
+    fontSize: 20,
+  },
+  inviteText: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: "600",
   },
   empty: {
     color: colors.textDim,
