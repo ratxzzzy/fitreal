@@ -4,19 +4,28 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  TextInput,
   Alert,
-  FlatList,
   ScrollView,
+  RefreshControl,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { useProfile } from "../../src/contexts/ProfileContext";
 import { supabase } from "../../src/lib/supabase";
+import {
+  Avatar,
+  Badge,
+  Button,
+  Input,
+  ScreenContainer,
+  StreakBadge,
+} from "../../src/components/ui";
+import { colors, radius, spacing, typography } from "../../src/theme";
 
 type Friend = {
   id: string;
   username: string;
-  day_count: number;
+  current_streak: number;
 };
 
 type PendingRequest = {
@@ -25,33 +34,18 @@ type PendingRequest = {
 };
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
-  const [dayCount, setDayCount] = useState(0);
-  const [username, setUsername] = useState("");
+  const { user } = useAuth();
+  const { profile, refresh: refreshProfile } = useProfile();
+  const router = useRouter();
+
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pending, setPending] = useState<PendingRequest[]>([]);
   const [friendSearch, setFriendSearch] = useState("");
   const [addingFriend, setAddingFriend] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const loadProfile = useCallback(async () => {
+  const loadSocial = useCallback(async () => {
     if (!user) return;
-
-    const { data: profile } = await supabase
-      .from("users")
-      .select("username")
-      .eq("id", user.id)
-      .single();
-
-    if (profile) setUsername(profile.username);
-
-    const year = new Date().getFullYear();
-    const { count } = await supabase
-      .from("daily_entries")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .gte("date", `${year}-01-01`);
-
-    setDayCount(count ?? 0);
 
     const { data: friendships } = await supabase
       .from("friendships")
@@ -66,26 +60,11 @@ export default function ProfileScreen() {
     if (friendIds.length > 0) {
       const { data: friendUsers } = await supabase
         .from("users")
-        .select("id, username")
+        .select("id, username, current_streak")
         .in("id", friendIds);
-
-      const { data: friendCounts } = await supabase
-        .from("daily_entries")
-        .select("user_id, date")
-        .in("user_id", friendIds)
-        .gte("date", `${year}-01-01`);
-
-      const countMap = new Map<string, number>();
-      (friendCounts ?? []).forEach((c) => {
-        countMap.set(c.user_id, (countMap.get(c.user_id) ?? 0) + 1);
-      });
-
-      setFriends(
-        (friendUsers ?? []).map((u) => ({
-          ...u,
-          day_count: countMap.get(u.id) ?? 0,
-        }))
-      );
+      setFriends((friendUsers as Friend[]) ?? []);
+    } else {
+      setFriends([]);
     }
 
     const { data: pendingRequests } = await supabase
@@ -102,19 +81,26 @@ export default function ProfileScreen() {
           "id",
           pendingRequests.map((p) => p.user_id_a)
         );
-
       setPending(
         (pendingUsers ?? []).map((u) => ({
           user_id_a: u.id,
           username: u.username,
         }))
       );
+    } else {
+      setPending([]);
     }
   }, [user]);
 
   useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+    loadSocial();
+  }, [loadSocial]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refreshProfile(), loadSocial()]);
+    setRefreshing(false);
+  }, [refreshProfile, loadSocial]);
 
   const addFriend = async () => {
     if (!user || !friendSearch.trim()) return;
@@ -123,8 +109,8 @@ export default function ProfileScreen() {
     const { data: foundUser } = await supabase
       .from("users")
       .select("id")
-      .eq("username", friendSearch.trim().toLowerCase())
-      .single();
+      .ilike("username", friendSearch.trim())
+      .maybeSingle();
 
     if (!foundUser) {
       Alert.alert("No encontrado", "No existe un usuario con ese nombre");
@@ -164,24 +150,57 @@ export default function ProfileScreen() {
       .update({ status: "accepted" })
       .eq("user_id_a", friendUserId)
       .eq("user_id_b", user.id);
-
-    loadProfile();
+    loadSocial();
   };
 
+  if (!profile) return <ScreenContainer />;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <ScreenContainer>
+      <View style={styles.topBar}>
+        <View style={{ width: 32 }} />
+        <Text style={styles.topTitle}>Perfil</Text>
+        <TouchableOpacity onPress={() => router.push("/settings")} hitSlop={12}>
+          <Text style={styles.gear}>⚙</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+          />
+        }
+      >
         <View style={styles.profileHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {username.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <Text style={styles.username}>@{username}</Text>
+          <Avatar
+            username={profile.username}
+            avatarUrl={profile.avatar_url}
+            streak={profile.current_streak}
+            size={96}
+          />
+          <Text style={styles.username}>
+            {profile.display_name ?? `@${profile.username}`}
+          </Text>
+          {profile.display_name && (
+            <Text style={styles.handle}>@{profile.username}</Text>
+          )}
+          {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
+
           <View style={styles.statsRow}>
             <View style={styles.stat}>
-              <Text style={styles.statNumber}>{dayCount}</Text>
-              <Text style={styles.statLabel}>dias este ano</Text>
+              <View style={styles.streakWrap}>
+                <Text style={styles.flame}>🔥</Text>
+                <Text style={styles.statNumber}>{profile.current_streak}</Text>
+              </View>
+              <Text style={styles.statLabel}>racha actual</Text>
+            </View>
+            <View style={styles.stat}>
+              <Text style={styles.statNumber}>{profile.best_streak}</Text>
+              <Text style={styles.statLabel}>mejor racha</Text>
             </View>
             <View style={styles.stat}>
               <Text style={styles.statNumber}>{friends.length}</Text>
@@ -195,7 +214,10 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>Solicitudes pendientes</Text>
             {pending.map((p) => (
               <View key={p.user_id_a} style={styles.friendRow}>
-                <Text style={styles.friendName}>@{p.username}</Text>
+                <View style={styles.friendInfo}>
+                  <Avatar username={p.username} size={36} />
+                  <Text style={styles.friendName}>@{p.username}</Text>
+                </View>
                 <TouchableOpacity
                   style={styles.acceptButton}
                   onPress={() => acceptFriend(p.user_id_a)}
@@ -210,16 +232,16 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Anadir amigo</Text>
           <View style={styles.addFriendRow}>
-            <TextInput
-              style={styles.input}
-              placeholder="Nombre de usuario"
-              placeholderTextColor="#666"
-              value={friendSearch}
-              onChangeText={setFriendSearch}
-              autoCapitalize="none"
-            />
+            <View style={{ flex: 1 }}>
+              <Input
+                placeholder="Nombre de usuario"
+                value={friendSearch}
+                onChangeText={setFriendSearch}
+                autoCapitalize="none"
+              />
+            </View>
             <TouchableOpacity
-              style={[styles.addButton, addingFriend && styles.buttonDisabled]}
+              style={[styles.addButton, addingFriend && styles.disabled]}
               onPress={addFriend}
               disabled={addingFriend}
             >
@@ -228,170 +250,178 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {friends.length > 0 && (
-          <View style={styles.section}>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Amigos</Text>
-            {friends
-              .sort((a, b) => b.day_count - a.day_count)
+            {friends.length > 0 && <Badge text={`${friends.length}`} />}
+          </View>
+          {friends.length === 0 ? (
+            <Text style={styles.empty}>
+              Aun no tienes amigos. Anade alguno arriba!
+            </Text>
+          ) : (
+            friends
+              .sort((a, b) => b.current_streak - a.current_streak)
               .map((f) => (
                 <View key={f.id} style={styles.friendRow}>
-                  <Text style={styles.friendName}>@{f.username}</Text>
-                  <View style={styles.friendCounter}>
-                    <Text style={styles.friendCounterText}>
-                      {f.day_count} dias
-                    </Text>
+                  <View style={styles.friendInfo}>
+                    <Avatar
+                      username={f.username}
+                      streak={f.current_streak}
+                      size={40}
+                    />
+                    <Text style={styles.friendName}>@{f.username}</Text>
                   </View>
+                  <StreakBadge streak={f.current_streak} size="sm" />
                 </View>
-              ))}
-          </View>
-        )}
+              ))
+          )}
+        </View>
 
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={() => {
-            Alert.alert("Cerrar sesion", "Seguro que quieres salir?", [
-              { text: "Cancelar", style: "cancel" },
-              { text: "Salir", style: "destructive", onPress: signOut },
-            ]);
-          }}
-        >
-          <Text style={styles.logoutText}>Cerrar sesion</Text>
-        </TouchableOpacity>
+        <Button
+          title="Ajustes"
+          variant="secondary"
+          onPress={() => router.push("/settings")}
+        />
       </ScrollView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: spacing.md,
+  },
+  topTitle: {
+    ...typography.h2,
+    color: colors.text,
+  },
+  gear: {
+    fontSize: 24,
+    color: colors.textMuted,
   },
   content: {
-    padding: 24,
-    gap: 24,
+    padding: spacing.lg,
+    gap: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
   profileHeader: {
     alignItems: "center",
-    gap: 12,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#FF6B35",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#fff",
+    gap: spacing.sm,
   },
   username: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#fff",
+    ...typography.h1,
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  handle: {
+    color: colors.textMuted,
+    fontSize: 14,
+  },
+  bio: {
+    color: colors.textMuted,
+    fontSize: 14,
+    textAlign: "center",
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.lg,
   },
   statsRow: {
     flexDirection: "row",
-    gap: 32,
-    marginTop: 8,
+    gap: spacing.xl,
+    marginTop: spacing.md,
   },
   stat: {
     alignItems: "center",
+    minWidth: 70,
+  },
+  streakWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  flame: {
+    fontSize: 20,
   },
   statNumber: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "900",
-    color: "#FF6B35",
+    color: colors.accent,
   },
   statLabel: {
-    fontSize: 13,
-    color: "#666",
+    fontSize: 12,
+    color: colors.textDim,
     marginTop: 2,
   },
   section: {
-    gap: 12,
+    gap: spacing.sm,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
+    ...typography.h2,
+    color: colors.text,
   },
   addFriendRow: {
     flexDirection: "row",
-    gap: 12,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    color: "#fff",
-    borderWidth: 1,
-    borderColor: "#333",
+    gap: spacing.sm,
+    alignItems: "flex-start",
   },
   addButton: {
-    backgroundColor: "#FF6B35",
-    borderRadius: 12,
-    width: 50,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    width: 52,
+    height: 52,
     justifyContent: "center",
     alignItems: "center",
   },
-  buttonDisabled: {
+  disabled: {
     opacity: 0.6,
   },
   addButtonText: {
-    fontSize: 24,
-    color: "#fff",
+    fontSize: 28,
+    color: colors.white,
     fontWeight: "700",
   },
   friendRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#111",
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+  },
+  friendInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flex: 1,
   },
   friendName: {
-    color: "#fff",
-    fontSize: 16,
+    color: colors.text,
+    fontSize: 15,
     fontWeight: "600",
-  },
-  friendCounter: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  friendCounterText: {
-    color: "#FF6B35",
-    fontSize: 13,
-    fontWeight: "700",
   },
   acceptButton: {
-    backgroundColor: "#FF6B35",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   acceptText: {
-    color: "#fff",
+    color: colors.white,
     fontWeight: "700",
+    fontSize: 14,
   },
-  logoutButton: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 16,
-  },
-  logoutText: {
-    color: "#ff4444",
-    fontSize: 16,
-    fontWeight: "600",
+  empty: {
+    color: colors.textDim,
+    fontSize: 14,
+    textAlign: "center",
+    padding: spacing.lg,
   },
 });

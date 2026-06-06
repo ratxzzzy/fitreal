@@ -1,8 +1,11 @@
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
-import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
-import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AuthProvider, useAuth } from "../src/contexts/AuthContext";
+import { ProfileProvider } from "../src/contexts/ProfileContext";
+import { colors } from "../src/theme";
 
 function RootLayoutNav() {
   const { session, loading } = useAuth();
@@ -24,7 +27,7 @@ function RootLayoutNav() {
   if (loading) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#FF6B35" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -39,9 +42,13 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <ProfileProvider>
+          <RootLayoutNav />
+        </ProfileProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -50,6 +57,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#000",
+    backgroundColor: colors.bg,
   },
 });

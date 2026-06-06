@@ -7,6 +7,15 @@ export type UserProfile = {
   username: string;
   email: string;
   notification_window: NotificationWindow;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  timezone: string;
+  current_streak: number;
+  best_streak: number;
+  last_entry_date: string | null;
+  streak_freezes: number;
+  deleted_at: string | null;
   created_at: string;
 };
 

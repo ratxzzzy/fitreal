@@ -8,9 +8,15 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { supabase } from "../../src/lib/supabase";
+import {
+  Avatar,
+  ScreenContainer,
+  StreakBadge,
+} from "../../src/components/ui";
+import { colors, radius, spacing, typography } from "../../src/theme";
+import { formatRelativeDate, formatTime } from "../../src/utils/date";
 
 type FeedEntry = {
   id: string;
@@ -19,15 +25,16 @@ type FeedEntry = {
   captured_at: string;
   user_id: string;
   username: string;
-  day_count: number;
-  reactions: { emoji: string; count: number }[];
+  current_streak: number;
+  reactions: { emoji: string; count: number; mine: boolean }[];
 };
 
-const REACTION_EMOJIS = ["\u{1F4AA}", "\u{1F525}", "\u{1F3C6}", "\u{1F44F}", "\u{26A1}"];
+const REACTION_EMOJIS = ["💪", "🔥", "🏆", "👏", "⚡"];
 
 export default function FeedScreen() {
   const [entries, setEntries] = useState<FeedEntry[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
   const fetchFeed = useCallback(async () => {
@@ -51,51 +58,56 @@ export default function FeedScreen() {
       .order("captured_at", { ascending: false })
       .limit(50);
 
-    if (!rawEntries) return;
+    if (!rawEntries) {
+      setEntries([]);
+      setLoading(false);
+      return;
+    }
 
     const userIds = [...new Set(rawEntries.map((e) => e.user_id))];
     const { data: users } = await supabase
       .from("users")
-      .select("id, username")
+      .select("id, username, current_streak")
       .in("id", userIds);
 
-    const userMap = new Map((users ?? []).map((u) => [u.id, u.username]));
+    const userMap = new Map(
+      (users ?? []).map((u) => [u.id, u as { id: string; username: string; current_streak: number }])
+    );
 
     const entryIds = rawEntries.map((e) => e.id);
     const { data: reactions } = await supabase
       .from("reactions")
-      .select("entry_id, emoji")
+      .select("entry_id, emoji, user_id")
       .in("entry_id", entryIds);
 
-    const reactionMap = new Map<string, Map<string, number>>();
+    const reactionMap = new Map<
+      string,
+      Map<string, { count: number; mine: boolean }>
+    >();
     (reactions ?? []).forEach((r) => {
       if (!reactionMap.has(r.entry_id)) reactionMap.set(r.entry_id, new Map());
       const emojiMap = reactionMap.get(r.entry_id)!;
-      emojiMap.set(r.emoji, (emojiMap.get(r.emoji) ?? 0) + 1);
+      const prev = emojiMap.get(r.emoji) ?? { count: 0, mine: false };
+      emojiMap.set(r.emoji, {
+        count: prev.count + 1,
+        mine: prev.mine || r.user_id === user.id,
+      });
     });
 
-    const year = new Date().getFullYear();
-    const { data: counts } = await supabase
-      .from("daily_entries")
-      .select("user_id, date")
-      .in("user_id", userIds)
-      .gte("date", `${year}-01-01`);
-
-    const countMap = new Map<string, number>();
-    (counts ?? []).forEach((c) => {
-      countMap.set(c.user_id, (countMap.get(c.user_id) ?? 0) + 1);
+    const feed: FeedEntry[] = rawEntries.map((e) => {
+      const u = userMap.get(e.user_id);
+      return {
+        ...e,
+        username: u?.username ?? "???",
+        current_streak: u?.current_streak ?? 0,
+        reactions: Array.from(reactionMap.get(e.id)?.entries() ?? []).map(
+          ([emoji, info]) => ({ emoji, ...info })
+        ),
+      };
     });
-
-    const feed: FeedEntry[] = rawEntries.map((e) => ({
-      ...e,
-      username: userMap.get(e.user_id) ?? "???",
-      day_count: countMap.get(e.user_id) ?? 0,
-      reactions: Array.from(reactionMap.get(e.id)?.entries() ?? []).map(
-        ([emoji, count]) => ({ emoji, count })
-      ),
-    }));
 
     setEntries(feed);
+    setLoading(false);
   }, [user]);
 
   useEffect(() => {
@@ -108,34 +120,45 @@ export default function FeedScreen() {
     setRefreshing(false);
   };
 
-  const addReaction = async (entryId: string, emoji: string) => {
+  const toggleReaction = async (entryId: string, emoji: string, mine: boolean) => {
     if (!user) return;
-    await supabase.from("reactions").insert({
-      entry_id: entryId,
-      user_id: user.id,
-      emoji,
-    });
+    if (mine) {
+      await supabase
+        .from("reactions")
+        .delete()
+        .eq("entry_id", entryId)
+        .eq("user_id", user.id)
+        .eq("emoji", emoji);
+    } else {
+      await supabase.from("reactions").insert({
+        entry_id: entryId,
+        user_id: user.id,
+        emoji,
+      });
+    }
     fetchFeed();
   };
 
   const renderEntry = ({ item }: { item: FeedEntry }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.username}>@{item.username}</Text>
-        <View style={styles.counterBadge}>
-          <Text style={styles.counterText}>{item.day_count} dias</Text>
+        <View style={styles.headerLeft}>
+          <Avatar
+            username={item.username}
+            streak={item.current_streak}
+            size={40}
+          />
+          <View>
+            <Text style={styles.username}>@{item.username}</Text>
+            <Text style={styles.date}>
+              {formatRelativeDate(item.date)} · {formatTime(item.captured_at)}
+            </Text>
+          </View>
         </View>
+        <StreakBadge streak={item.current_streak} size="md" />
       </View>
       <Image source={{ uri: item.photo_url }} style={styles.photo} />
       <View style={styles.cardFooter}>
-        <Text style={styles.date}>
-          {new Date(item.captured_at).toLocaleDateString("es-ES", {
-            day: "numeric",
-            month: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </Text>
         <View style={styles.reactions}>
           {REACTION_EMOJIS.map((emoji) => {
             const existing = item.reactions.find((r) => r.emoji === emoji);
@@ -144,14 +167,16 @@ export default function FeedScreen() {
                 key={emoji}
                 style={[
                   styles.reactionButton,
-                  existing && styles.reactionActive,
+                  existing?.mine && styles.reactionMine,
                 ]}
-                onPress={() => addReaction(item.id, emoji)}
+                onPress={() =>
+                  toggleReaction(item.id, emoji, !!existing?.mine)
+                }
               >
-                <Text style={styles.reactionEmoji}>
-                  {emoji}
-                  {existing ? ` ${existing.count}` : ""}
-                </Text>
+                <Text style={styles.reactionEmoji}>{emoji}</Text>
+                {existing ? (
+                  <Text style={styles.reactionCount}>{existing.count}</Text>
+                ) : null}
               </TouchableOpacity>
             );
           })}
@@ -161,7 +186,7 @@ export default function FeedScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenContainer>
       <Text style={styles.headerTitle}>FitReal</Text>
       <FlatList
         data={entries}
@@ -172,114 +197,116 @@ export default function FeedScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#FF6B35"
+            tintColor={colors.accent}
           />
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>&#x1F3CB;&#xFE0F;</Text>
-            <Text style={styles.emptyTitle}>Tu feed esta vacio</Text>
-            <Text style={styles.emptyText}>
-              Haz tu primera foto o anade amigos para ver su actividad.
-            </Text>
-          </View>
+          loading ? null : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyEmoji}>🏋️</Text>
+              <Text style={styles.emptyTitle}>Tu feed esta vacio</Text>
+              <Text style={styles.emptyText}>
+                Haz tu primera foto o anade amigos para ver su actividad.
+              </Text>
+            </View>
+          )
         }
       />
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
   headerTitle: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#FF6B35",
-    padding: 16,
-    paddingBottom: 8,
+    color: colors.accent,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
     letterSpacing: -1,
   },
   list: {
-    padding: 16,
-    gap: 20,
+    padding: spacing.md,
+    gap: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   card: {
-    backgroundColor: "#111",
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     overflow: "hidden",
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 14,
+    padding: spacing.md,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flex: 1,
   },
   username: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
+    color: colors.text,
+    ...typography.bodyBold,
   },
-  counterBadge: {
-    backgroundColor: "#FF6B35",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  counterText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
+  date: {
+    color: colors.textDim,
+    fontSize: 12,
+    marginTop: 2,
   },
   photo: {
     width: "100%",
     aspectRatio: 3 / 4,
-    backgroundColor: "#222",
+    backgroundColor: colors.surfaceElevated,
   },
   cardFooter: {
-    padding: 14,
-    gap: 10,
-  },
-  date: {
-    color: "#666",
-    fontSize: 13,
+    padding: spacing.md,
   },
   reactions: {
     flexDirection: "row",
-    gap: 8,
+    gap: spacing.sm,
   },
   reactionButton: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm + 2,
     paddingVertical: 6,
-  },
-  reactionActive: {
-    backgroundColor: "#2a1a10",
     borderWidth: 1,
-    borderColor: "#FF6B35",
+    borderColor: "transparent",
+  },
+  reactionMine: {
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accent,
   },
   reactionEmoji: {
     fontSize: 16,
   },
+  reactionCount: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   empty: {
     alignItems: "center",
-    padding: 48,
+    padding: spacing.xxl,
   },
   emptyEmoji: {
     fontSize: 64,
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   emptyTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 8,
+    color: colors.text,
+    ...typography.h1,
+    marginBottom: spacing.sm,
   },
   emptyText: {
-    color: "#666",
+    color: colors.textDim,
     fontSize: 15,
     textAlign: "center",
     lineHeight: 22,

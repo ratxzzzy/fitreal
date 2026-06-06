@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { getDeviceTimezone } from "../utils/date";
 
 type AuthContextType = {
   session: Session | null;
@@ -9,6 +10,7 @@ type AuthContextType = {
   signUp: (email: string, password: string, username: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,8 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error: profileError } = await supabase.from("users").insert({
       id: userId,
       email,
-      username,
+      username: username.toLowerCase(),
       notification_window: "random",
+      timezone: getDeviceTimezone(),
     });
     if (profileError) throw profileError;
   };
@@ -65,9 +68,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
+  const deleteAccount = async () => {
+    if (!session?.user) return;
+    const userId = session.user.id;
+    await supabase.from("users").update({ deleted_at: new Date().toISOString() }).eq("id", userId);
+    await supabase.auth.signOut();
+  };
+
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, loading, signUp, signIn, signOut }}
+      value={{
+        session,
+        user: session?.user ?? null,
+        loading,
+        signUp,
+        signIn,
+        signOut,
+        deleteAccount,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -2,43 +2,48 @@ import { useState } from "react";
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
+  TouchableOpacity,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { Button, Input } from "../../src/components/ui";
+import { colors, spacing, typography } from "../../src/theme";
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { signUp } = useAuth();
   const router = useRouter();
 
   const handleRegister = async () => {
+    setError(null);
     if (!username || !email || !password) {
-      Alert.alert("Error", "Rellena todos los campos");
+      setError("Rellena todos los campos");
       return;
     }
     if (password.length < 6) {
-      Alert.alert("Error", "La contrasena debe tener al menos 6 caracteres");
+      setError("La contrasena debe tener al menos 6 caracteres");
+      return;
+    }
+    if (!/^[a-z0-9_]{3,20}$/i.test(username.trim())) {
+      setError("Usuario: 3-20 caracteres, solo letras, numeros y guion bajo");
       return;
     }
     setLoading(true);
     try {
       await signUp(email.trim().toLowerCase(), password, username.trim());
-      Alert.alert(
-        "Cuenta creada",
-        "Revisa tu email para confirmar tu cuenta",
-        [{ text: "OK", onPress: () => router.back() }]
-      );
-    } catch (error: any) {
-      Alert.alert("Error", error.message ?? "No se pudo crear la cuenta");
+      Alert.alert("Cuenta creada", "Bienvenido a FitReal", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } catch (e: any) {
+      setError(e.message ?? "No se pudo crear la cuenta");
     } finally {
       setLoading(false);
     }
@@ -55,45 +60,38 @@ export default function RegisterScreen() {
       </View>
 
       <View style={styles.form}>
-        <TextInput
-          style={styles.input}
+        <Input
           placeholder="Nombre de usuario"
-          placeholderTextColor="#666"
           value={username}
           onChangeText={setUsername}
           autoCapitalize="none"
+          autoComplete="username"
         />
-        <TextInput
-          style={styles.input}
+        <Input
           placeholder="Email"
-          placeholderTextColor="#666"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          autoComplete="email"
         />
-        <TextInput
-          style={styles.input}
+        <Input
           placeholder="Contrasena (min. 6 caracteres)"
-          placeholderTextColor="#666"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          autoComplete="password-new"
         />
-
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Button
+          title="Crear cuenta"
           onPress={handleRegister}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? "Creando cuenta..." : "Crear cuenta"}
-          </Text>
-        </TouchableOpacity>
-
+          loading={loading}
+        />
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.linkText}>
-            Ya tienes cuenta? <Text style={styles.linkBold}>Inicia sesion</Text>
+            Ya tienes cuenta?{" "}
+            <Text style={styles.linkBold}>Inicia sesion</Text>
           </Text>
         </TouchableOpacity>
       </View>
@@ -104,60 +102,39 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.bg,
     justifyContent: "center",
-    padding: 24,
+    padding: spacing.lg,
   },
   header: {
     alignItems: "center",
-    marginBottom: 48,
+    marginBottom: spacing.xxl,
   },
   logo: {
-    fontSize: 48,
-    fontWeight: "900",
-    color: "#FF6B35",
-    letterSpacing: -2,
+    ...typography.display,
+    color: colors.accent,
   },
   subtitle: {
-    fontSize: 16,
-    color: "#999",
-    marginTop: 8,
+    ...typography.body,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   form: {
-    gap: 16,
+    gap: spacing.md,
   },
-  input: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: "#fff",
-    borderWidth: 1,
-    borderColor: "#333",
-  },
-  button: {
-    backgroundColor: "#FF6B35",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
+  error: {
+    color: colors.danger,
+    fontSize: 13,
+    textAlign: "center",
   },
   linkText: {
-    color: "#999",
+    color: colors.textMuted,
     textAlign: "center",
-    marginTop: 16,
+    marginTop: spacing.md,
     fontSize: 15,
   },
   linkBold: {
-    color: "#FF6B35",
+    color: colors.accent,
     fontWeight: "700",
   },
 });
